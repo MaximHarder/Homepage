@@ -23,10 +23,8 @@ jobs:
     name: Build and Deploy
     runs-on: ubuntu-latest
     environment: keys
-    # Zusätzlich zur Wait-Step: serialisiert gegen Dependabot CI/Automerge
-    concurrency:
-      group: dependabot-updates-gate
-      cancel-in-progress: false
+    # Wait for Dependabot queue / CI — do not skip Dependabot merges.
+    # No shared job concurrency with CI (no dependabot-updates-gate).
 
     steps:
       - name: Auf Security Audit und Dependabot warten
@@ -73,8 +71,8 @@ jobs:
 
           # Security Audit für diesen Commit (startet oft parallel zum Deploy)
           wait_open_runs "security-audit.yml" "$SHA" "Security Audit"
-          # Laufende Dependabot-CI/Automerge-PRs im Repo
-          wait_open_runs "dependabot-ci-automerge.yml" "" "Dependabot CI/Automerge"
+          wait_open_runs "dependabot-ci-automerge.yml" "" "Dependabot CI"
+          wait_open_runs "dependabot-queue.yml" "" "Dependabot Merge Queue"
           echo "Alle Gates frei — Deploy fortsetzen"
 
       - name: Checkout code

@@ -16,10 +16,16 @@ export default defineConfig({
   },
   build: {
     sourcemap: true,
-    rollupOptions: {
+    // Vite 8 / Rolldown: object-form manualChunks entfernt → codeSplitting.groups
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          vendor: ['vue', 'vue-router', 'vue-i18n', 'pinia'],
+        codeSplitting: {
+          groups: [
+            {
+              name: 'vendor',
+              test: /node_modules\/(?:vue|vue-router|vue-i18n|pinia)(?:\/|$)/,
+            },
+          ],
         },
       },
     },
