@@ -8,14 +8,11 @@ on:
       - 'README.md'
       - 'LICENSE'
       - '.gitignore'
-  pull_request:
-    branches: [main, master]
-    paths-ignore:
-      - '.github/**'
-      - 'README.md'
-      - 'LICENSE'
-      - '.gitignore'
   workflow_dispatch: # Manueller Start möglich
+
+concurrency:
+  group: deploy-ftp
+  cancel-in-progress: true
 
 jobs:
   check-dependabot:
@@ -91,6 +88,11 @@ jobs:
     if: needs.check-dependabot.outputs.is-dependabot == 'false'
     runs-on: ubuntu-latest
     environment: keys
+    # Wartet, bis Dependabot CI/Automerge fertig ist — danach wird deployed
+    # (auch nach Dependabot-Merges auf main; kein Skip)
+    concurrency:
+      group: dependabot-updates-gate
+      cancel-in-progress: false
 
     steps:
       - name: Checkout code
@@ -99,8 +101,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: '24'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -118,16 +120,65 @@ jobs:
           echo "VITE_CF_TURNSTILE_SITEKEY=${{ secrets.VITE_CF_TURNSTILE_SITEKEY }}" > dist/.env
           echo "Created .env file with Turnstile sitekey"
 
+      # Nach fehlgeschlagenem clean-slate kann der Sync-State assets/* listen,
+      # obwohl assets/ fehlt. FTP-Deploy schreibt dann in ein fehlendes Verzeichnis → 553.
+      # assets/ neu anlegen und veralteten Sync-State löschen, damit der nächste Sync
+      # Ordner korrekt anlegt.
+      - name: Prepare FTP remote dirs
+        env:
+          FTP_SERVER: ${{ secrets.FTP_IP }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASS }}
+          FTP_PORT: ${{ secrets.FTP_PORT }}
+        run: |
+          python3 <<'PY'
+          import os
+          from ftplib import FTP, error_perm
+
+          host = os.environ["FTP_SERVER"]
+          port = int(os.environ.get("FTP_PORT") or "21")
+          ftp = FTP()
+          ftp.connect(host, port, timeout=60)
+          ftp.login(os.environ["FTP_USER"], os.environ["FTP_PASSWORD"])
+
+          def dir_exists(name: str) -> bool:
+              try:
+                  ftp.cwd(name)
+                  ftp.cwd("..")
+                  return True
+              except error_perm:
+                  return False
+
+          if dir_exists("assets"):
+              print("assets/ existiert bereits")
+          else:
+              print("assets/ fehlt — Ordner anlegen und veralteten Sync-State löschen")
+              try:
+                  ftp.mkd("assets")
+                  print("assets/ angelegt")
+              except error_perm as err:
+                  raise SystemExit(f"assets/ konnte nicht angelegt werden: {err}") from err
+              try:
+                  ftp.delete(".ftp-deploy-sync-state.json")
+                  print(".ftp-deploy-sync-state.json gelöscht")
+              except error_perm as err:
+                  print(f"Sync-State nicht entfernt (ok falls nicht vorhanden): {err}")
+
+          ftp.quit()
+          PY
+
       - name: Deploy to FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+        # v4.4.0 nutzt Node 24 (vermeidet Node-20-Deprecation).
+        # Kein dangerous-clean-slate: nach komplettem Wipe liefern viele FTP-Hosts
+        # 550, wenn assets/ angelegt und sofort per CWD betreten wird.
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
         with:
           server: ${{ secrets.FTP_IP }}
           username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASS }}
           port: ${{ secrets.FTP_PORT }}
-          server-dir: /
+          server-dir: ./
           local-dir: ./dist/
-          dangerous-clean-slate: true
           exclude: |
             **/.php-ini
             **/.php-version
