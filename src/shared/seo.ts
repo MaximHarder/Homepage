@@ -1,9 +1,16 @@
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
-import type { I18n, Composer } from 'vue-i18n'
+
+type I18nLocale = string | { value: string }
+
+type SeoI18nGlobal = {
+  locale: I18nLocale
+  te?: (key: string, locale?: string) => boolean
+  t: (key: string) => unknown
+}
 
 type ApplySeoMetaParams = {
   to: RouteLocationNormalizedLoaded
-  i18n: I18n
+  i18n: unknown
   defaultTitle: string
   defaultDesc: string
 }
@@ -13,13 +20,14 @@ export function applySeoMeta({ to, i18n, defaultTitle, defaultDesc }: ApplySeoMe
   let title = (to.meta?.title as string) || defaultTitle
   try {
     const maybeLocale = to.params?.locale
-    // Vue 3 i18n: locale может быть строкой или реактивом — обработаем оба случая
-    const g: any = i18n.global as unknown as Composer | any
+    const g = (i18n as { global: SeoI18nGlobal }).global
     const newLocale = maybeLocale === 'ru' ? 'ru' : 'de'
     if (typeof g.locale === 'string') g.locale = newLocale
-    else if (g.locale && 'value' in g.locale) g.locale.value = newLocale
+    else if (g.locale && typeof g.locale === 'object' && 'value' in g.locale) {
+      g.locale.value = newLocale
+    }
     const locale: string = typeof g.locale === 'string' ? g.locale : String(g.locale?.value || 'de')
-    if (to.name === 'start' && g.te && g.te('start.title', locale)) {
+    if (to.name === 'start' && g.te?.('start.title', locale)) {
       title = String(g.t('start.title'))
     }
     const html = document.documentElement
@@ -42,23 +50,21 @@ export function applySeoMeta({ to, i18n, defaultTitle, defaultDesc }: ApplySeoMe
     canonical.setAttribute('rel', 'canonical')
     document.head.appendChild(canonical)
   }
-  const base = 'https://maxim-harder.de'
-  const { pathname, search } = (typeof window !== 'undefined' && window.location) || { pathname: '/', search: '' }
-  canonical.setAttribute('href', `${base}${pathname}${search || ''}`)
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  canonical.setAttribute('href', origin + to.fullPath)
 
-  const setOg = (property: string, content?: string) => {
-    if (!content) return
-    let el = document.querySelector(`meta[property="${property}"]`)
+  // Open Graph / Twitter basics
+  const setMeta = (attr: string, key: string, value: string) => {
+    let el = document.querySelector(`meta[${attr}="${key}"]`)
     if (!el) {
       el = document.createElement('meta')
-      el.setAttribute('property', property)
+      el.setAttribute(attr, key)
       document.head.appendChild(el)
     }
-    el.setAttribute('content', content)
+    el.setAttribute('content', value)
   }
-  setOg('og:title', title)
-  setOg('og:description', description)
-  setOg('og:url', `${base}${pathname}${search || ''}`)
+  setMeta('property', 'og:title', title)
+  setMeta('property', 'og:description', description)
+  setMeta('name', 'twitter:title', title)
+  setMeta('name', 'twitter:description', description)
 }
-
-

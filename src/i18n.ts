@@ -916,7 +916,8 @@ export const i18n = createI18n({
   globalInjection: true,
   locale: localeFromStorage,
   fallbackLocale: 'de',
-  messages: messages as any,
+  // createI18n expects mutable LocaleMessages; `as const` messages need a widen
+  messages: { ...messages },
 })
 
 

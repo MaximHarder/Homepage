@@ -433,9 +433,10 @@ const leistungen = reactive([
   },
 ])
 
-const basket = ref<any[]>([])
+type Leistung = (typeof leistungen)[number]
+const basket = ref<Leistung[]>([])
 const preisModus = ref<'stunde' | 'pauschal'>('stunde')
-const addToBasket = (item: any) => {
+const addToBasket = (item: Leistung) => {
   if (!basket.value.find((x) => x.id === item.id)) {
     basket.value.push(item)
   }
@@ -444,7 +445,7 @@ const removeFromBasket = (id: string) => {
   basket.value = basket.value.filter((x) => x.id !== id)
 }
 const minHoursPerService = 8
-function getItemMinHours(item: any): number {
+function getItemMinHours(item: Leistung): number {
   const value = Number(item?.minHours)
   if (item?.pauschalOnly) return 1
   return Number.isFinite(value) && value > 0 ? value : minHoursPerService

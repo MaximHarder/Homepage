@@ -34,7 +34,7 @@ jobs:
         run: npm install || npm install --legacy-peer-deps
 
       - name: Lint
-        run: npm run lint
+        run: npx eslint --version && npm run lint
 
       - name: Typecheck
         run: npm run typecheck
