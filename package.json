@@ -20,7 +20,7 @@
     "@types/cloudflare-turnstile": "^0.2.2",
     "cfturnstile-vue3": "^2.0.0",
     "pinia": "^4.0.3",
-    "vue": "^3.5.22",
+    "vue": "^3.5.42",
     "vue-i18n": "^11.4.10",
     "vue-router": "^5.3.1"
   },
@@ -37,10 +37,13 @@
     "postcss": "^8.5.6",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.1.13",
-    "typescript": "^7.0.2",
+    "typescript": "~5.9.3",
     "vite": "^8.2.2",
     "vue-eslint-parser": "^10.2.0",
     "vue-tsc": "^3.0.5"
+  },
+  "overrides": {
+    "typescript": "~5.9.3"
   },
   "allowScripts": {
     "esbuild": true,

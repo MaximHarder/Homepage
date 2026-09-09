@@ -26,6 +26,10 @@ updates:
       - 'dependencies'
       - 'security'
       - 'automated'
+    # TypeScript 7 (native) bricht typescript-eslint / vue-tsc — Major ignorieren bis Tooling bereit.
+    ignore:
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
 
   # GitHub Actions überwachen
   - package-ecosystem: 'github-actions'
