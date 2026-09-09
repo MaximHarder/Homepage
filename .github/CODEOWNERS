@@ -12,7 +12,6 @@
 
 # Konfigurationsdateien
 package.json @MaximHarder
-package-lock.json @MaximHarder
 tsconfig.json @MaximHarder
 vite.config.ts @MaximHarder
 tailwind.config.ts @MaximHarder

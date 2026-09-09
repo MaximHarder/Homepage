@@ -1,10 +1,16 @@
-name: Dependabot CI and Automerge
+name: CI and Dependabot Automerge
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - 'package.json'
+  push:
+    branches: [main, master]
+    paths:
+      - 'package.json'
 
-# Gemeinsame Gruppe mit ftp-deploy: Deploy wartet, solange Dependabot-Updates laufen
+# Gemeinsame Gruppe mit ftp-deploy: Deploy wartet, solange CI/Dependabot laufen
 concurrency:
   group: dependabot-updates-gate
   cancel-in-progress: false
@@ -15,9 +21,8 @@ permissions:
 
 jobs:
   ci:
-    name: Dependabot CI
+    name: Install and test
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -26,10 +31,10 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # package-lock.json ist gitignored; npm ci braucht eine committed Lockfile
+        run: npm install
 
       - name: Lint
         run: npm run lint
