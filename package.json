@@ -10,7 +10,7 @@
     "build:cloudflare": "vue-tsc -b && vite build --config vite.config.cloudflare.ts",
     "build:client": "vue-tsc -b && vite build --config vite.config.client.ts",
     "preview": "vite preview",
-    "lint": "eslint --ext .ts,.vue src",
+    "lint": "eslint \"src/**/*.{ts,vue}\"",
     "format": "prettier --write ."
   },
   "dependencies": {
@@ -31,8 +31,6 @@
     "@typescript-eslint/eslint-plugin": "^8.46.3",
     "@typescript-eslint/parser": "^8.69.0",
     "@vitejs/plugin-vue": "^6.0.1",
-    "@vue/eslint-config-prettier": "^10.0.0",
-    "@vue/eslint-config-typescript": "^14.0.0",
     "autoprefixer": "^10.4.21",
     "eslint": "^10.9.1",
     "eslint-plugin-vue": "^10.5.1",
@@ -41,9 +39,11 @@
     "tailwindcss": "^4.1.13",
     "typescript": "^5.6.3",
     "vite": "^7.1.7",
+    "vue-eslint-parser": "^10.2.0",
     "vue-tsc": "^3.0.5"
   },
   "allowScripts": {
-    "esbuild": true
+    "esbuild": true,
+    "workerd": true
   }
 }

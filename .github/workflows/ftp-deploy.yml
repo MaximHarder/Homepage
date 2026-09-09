@@ -14,87 +14,69 @@ concurrency:
   group: deploy-ftp
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
-  check-dependabot:
-    name: Check if Dependabot
-    runs-on: ubuntu-latest
-    outputs:
-      is-dependabot: ${{ steps.check.outputs.is-dependabot }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 10
-
-      - name: Check if triggered by Dependabot
-        id: check
-        run: |
-          # Bei manuellem Start (workflow_dispatch) immer erlauben
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "is-dependabot=false" >> $GITHUB_OUTPUT
-            echo "Manual workflow dispatch - allowing deployment"
-            exit 0
-          fi
-
-          ACTOR="${{ github.actor }}"
-          COMMIT_AUTHOR="${{ github.event.head_commit.author.name }}"
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-          REF="${{ github.ref }}"
-
-          # Prüfe ob es ein Release-Branch ist (releases/v*)
-          if [[ "$REF" =~ ^refs/heads/releases/v ]] || [[ "$REF" =~ ^refs/remotes/origin/releases/v ]]; then
-            echo "is-dependabot=false" >> $GITHUB_OUTPUT
-            echo "Release branch detected - allowing deployment"
-            exit 0
-          fi
-
-          # Prüfe nur den aktuellen Commit, nicht die Historie
-          # Prüfe auf Dependabot-Actor oder Commit-Autor
-          # Nur prüfen wenn es wirklich Dependabot ist, nicht nur wegen Commit-Message
-          if [ "$ACTOR" = "dependabot[bot]" ]; then
-            echo "is-dependabot=true" >> $GITHUB_OUTPUT
-            echo "Skipping deployment - triggered by Dependabot"
-            echo "Actor: $ACTOR"
-            exit 0
-          fi
-
-          # Prüfe Commit-Autor nur wenn es wirklich Dependabot ist
-          if echo "$COMMIT_AUTHOR" | grep -qi "^dependabot\[bot\]$"; then
-            echo "is-dependabot=true" >> $GITHUB_OUTPUT
-            echo "Skipping deployment - commit author is Dependabot"
-            echo "Commit Author: $COMMIT_AUTHOR"
-            exit 0
-          fi
-
-          # Prüfe nur ob der aktuelle Commit direkt von Dependabot stammt
-          # Prüfe nur auf explizite Dependabot-Referenzen im aktuellen Commit
-          if echo "$COMMIT_MSG" | grep -qiE "^Merge.*dependabot/|^Bump.*from.*dependabot/|dependabot\[bot\]"; then
-            echo "is-dependabot=true" >> $GITHUB_OUTPUT
-            echo "Skipping deployment - commit message indicates Dependabot"
-            echo "Commit Message: $COMMIT_MSG"
-            exit 0
-          fi
-
-          # Kein Dependabot erkannt
-          echo "is-dependabot=false" >> $GITHUB_OUTPUT
-          echo "Not triggered by Dependabot, proceeding with deployment"
-          echo "Actor: $ACTOR"
-          echo "Commit Author: $COMMIT_AUTHOR"
-          echo "Ref: $REF"
-
   build-and-deploy:
     name: Build and Deploy
-    needs: check-dependabot
-    if: needs.check-dependabot.outputs.is-dependabot == 'false'
     runs-on: ubuntu-latest
     environment: keys
-    # Wartet, bis Dependabot CI/Automerge fertig ist — danach wird deployed
-    # (auch nach Dependabot-Merges auf main; kein Skip)
+    # Zusätzlich zur Wait-Step: serialisiert gegen Dependabot CI/Automerge
     concurrency:
       group: dependabot-updates-gate
       cancel-in-progress: false
 
     steps:
+      - name: Auf Security Audit und Dependabot warten
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TIMEOUT=3600
+          INTERVAL=30
+          elapsed=0
+
+          # Parallele Workflows (gleicher Push) brauchen kurz Zeit zum Registrieren
+          echo "Kurz warten, damit parallele Workflows starten können..."
+          sleep 20
+
+          wait_open_runs() {
+            local workflow="$1"
+            local filter_sha="${2:-}"
+            local desc="$3"
+            while true; do
+              local jq_filter
+              if [ -n "$filter_sha" ]; then
+                jq_filter="[.[] | select(.headSha == \"${filter_sha}\") | select(.status == \"queued\" or .status == \"in_progress\" or .status == \"pending\" or .status == \"waiting\")] | length"
+              else
+                jq_filter='[.[] | select(.status == "queued" or .status == "in_progress" or .status == "pending" or .status == "waiting")] | length'
+              fi
+              local count
+              count=$(gh run list --repo "$REPO" --workflow "$workflow" --limit 20 --json databaseId,status,headSha --jq "$jq_filter")
+              if [ "$count" = "0" ]; then
+                echo "${desc}: keine offenen Runs"
+                break
+              fi
+              if [ "$elapsed" -ge "$TIMEOUT" ]; then
+                echo "Timeout beim Warten auf ${desc}"
+                exit 1
+              fi
+              echo "${desc}: ${count} offene Run(s) — warte ${INTERVAL}s..."
+              sleep "$INTERVAL"
+              elapsed=$((elapsed + INTERVAL))
+            done
+          }
+
+          # Security Audit für diesen Commit (startet oft parallel zum Deploy)
+          wait_open_runs "security-audit.yml" "$SHA" "Security Audit"
+          # Laufende Dependabot-CI/Automerge-PRs im Repo
+          wait_open_runs "dependabot-ci-automerge.yml" "" "Dependabot CI/Automerge"
+          echo "Alle Gates frei — Deploy fortsetzen"
+
       - name: Checkout code
         uses: actions/checkout@v7
 
@@ -102,10 +84,10 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # package-lock.json ist gitignored; npm ci braucht eine committed Lockfile
+        run: npm install
 
       - name: Build project
         run: npm run build:client
